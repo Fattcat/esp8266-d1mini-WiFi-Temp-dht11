@@ -3,8 +3,8 @@
 #include "DHT.h"
 
 // --- WiFi nastavenie ---
-const char* ssid = "YourSSID-WiFi";
-const char* password = "YourPass123";
+const char* ssid = "TP-Link_3997";
+const char* password = "59911579";
 
 // --- DHT11 nastavenie ---
 #define DHTPIN D2
@@ -65,11 +65,11 @@ String generateHTML(float temperature, float humidity, int rssi) {
   html += "window.onload = move;";
   html += "</script>";
   html += "</head><body>";
-  html += "<h2>DHT11 ESP8266 - Temperature, Humidity & WiFi</h2>";
+  html += "<h2>DHT11 ESP8266 - Teplota, Vlhkosť & WiFi</h2>";
   html += "<table>";
   html += "<tr><th>Parameter</th><th>Value</th></tr>";
-  html += "<tr><td>Temperature</td><td style='color:" + colorTemperature(temperature) + "; font-weight:bold;'>" + String(temperature) + " °C</td></tr>";
-  html += "<tr><td>Humidity</td><td style='color:" + colorHumidity(humidity) + "; font-weight:bold;'>" + String(humidity) + " %</td></tr>";
+  html += "<tr><td>Teplota</td><td style='color:" + colorTemperature(temperature) + "; font-weight:bold;'>" + String(temperature) + " °C</td></tr>";
+  html += "<tr><td>Vlhkosť</td><td style='color:" + colorHumidity(humidity) + "; font-weight:bold;'>" + String(humidity) + " %</td></tr>";
   html += "<tr><td>WiFi RSSI</td><td style='color:" + colorRSSI(rssi) + "; font-weight:bold;'>" + String(rssi) + " dBm</td></tr>";
   html += "</table>";
   // --- Loading bar ---
@@ -90,7 +90,7 @@ void handleRoot() {
     return;
   }
 
-  Serial.print("Temperature: "); Serial.print(temperature); Serial.print(" °C, Humidity: "); Serial.print(humidity); Serial.print(" %, RSSI: "); Serial.println(rssi);
+  Serial.print("Teplota: "); Serial.print(temperature); Serial.print(" °C, Vlhkosť: "); Serial.print(humidity); Serial.print(" %, RSSI: "); Serial.println(rssi);
 
   server.send(200, "text/html; charset=UTF-8", generateHTML(temperature, humidity, rssi));
 }
