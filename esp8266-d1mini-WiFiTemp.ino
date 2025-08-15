@@ -29,8 +29,15 @@ String colorHumidity(float h) {
   else return "blue";
 }
 
+// --- Funkcia farby WiFi signálu ---
+String colorRSSI(int rssi) {
+  if (rssi <= -80) return "red";       // slabý signál
+  else if (rssi <= -60) return "orange"; // dobrý signál
+  else return "green";                  // výborný signál
+}
+
 // --- Generovanie web stránky ---
-String generateHTML(float temperature, float humidity) {
+String generateHTML(float temperature, float humidity, int rssi) {
   String html = "<!DOCTYPE html><html lang='sk'><head>";
   html += "<meta charset='UTF-8'>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
@@ -58,11 +65,12 @@ String generateHTML(float temperature, float humidity) {
   html += "window.onload = move;";
   html += "</script>";
   html += "</head><body>";
-  html += "<h2>DHT11 ESP8266 - Temperature and Humidity</h2>";
+  html += "<h2>DHT11 ESP8266 - Temperature, Humidity & WiFi</h2>";
   html += "<table>";
   html += "<tr><th>Parameter</th><th>Value</th></tr>";
   html += "<tr><td>Temperature</td><td style='color:" + colorTemperature(temperature) + "; font-weight:bold;'>" + String(temperature) + " °C</td></tr>";
   html += "<tr><td>Humidity</td><td style='color:" + colorHumidity(humidity) + "; font-weight:bold;'>" + String(humidity) + " %</td></tr>";
+  html += "<tr><td>WiFi RSSI</td><td style='color:" + colorRSSI(rssi) + "; font-weight:bold;'>" + String(rssi) + " dBm</td></tr>";
   html += "</table>";
   // --- Loading bar ---
   html += "<div class='progress-container'><div class='progress-bar' id='progress'></div></div>";
@@ -74,6 +82,7 @@ String generateHTML(float temperature, float humidity) {
 void handleRoot() {
   float humidity = dht.readHumidity();
   float temperature = dht.readTemperature();
+  int rssi = WiFi.RSSI();
 
   if (isnan(humidity) || isnan(temperature)) {
     Serial.println("Error reading DHT11!");
@@ -81,9 +90,9 @@ void handleRoot() {
     return;
   }
 
-  Serial.print("Temperature: "); Serial.print(temperature); Serial.print(" °C, Humidity: "); Serial.print(humidity); Serial.println(" %");
+  Serial.print("Temperature: "); Serial.print(temperature); Serial.print(" °C, Humidity: "); Serial.print(humidity); Serial.print(" %, RSSI: "); Serial.println(rssi);
 
-  server.send(200, "text/html; charset=UTF-8", generateHTML(temperature, humidity));
+  server.send(200, "text/html; charset=UTF-8", generateHTML(temperature, humidity, rssi));
 }
 
 void setup() {
