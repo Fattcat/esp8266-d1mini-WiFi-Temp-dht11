@@ -26,11 +26,11 @@ This project uses an **ESP8266** (e.g., NodeMCU) and a **DHT11** sensor to measu
 
 ## Hardware Requirements
 
-- ESP8266 (NodeMCU or compatible)
+- ESP8266 (NodeMCU or d1 mini)
 - DHT11 sensor
 - Jumper wires
 ## Img (replace Arduino nano with d1 mini)
-<img src="Arduino-DHT11Connection.jpg" alt="ESP8266 DHT11 Wiring Diagram" width="400">
+<img src="Arduino-DHT11Connection.jpg" alt="ESP8266 DHT11 Wiring Diagram" width="450">
 ---
 
 ## Wiring
