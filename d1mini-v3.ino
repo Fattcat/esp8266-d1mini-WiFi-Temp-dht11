@@ -25,7 +25,6 @@ float batteryVolt = 0;
 int   batteryPct  = 0;
 
 float getBatteryVoltage() {
-  // Priemeruj 5 meraní pre stabilitu
   long sum = 0;
   for (int i = 0; i < 5; i++) {
     sum += analogRead(ADC_PIN);
@@ -47,15 +46,12 @@ int voltageToPct(float v) {
 void manageBattery() {
   batteryVolt = getBatteryVoltage();
   batteryPct  = voltageToPct(batteryVolt);
-
-  // Ignoruj nereálne merania (nezapojený delič)
   if (batteryVolt < 2.5 || batteryVolt > 4.3) {
     Serial.printf("Nereálne napätie: %.2fV — preskakujem\n", batteryVolt);
     digitalWrite(CE_PIN, LOW);
     isCharging = false;
     return;
   }
-
   if (!isCharging && batteryVolt <= V_MIN) {
     digitalWrite(CE_PIN, HIGH);
     isCharging = true;
@@ -78,81 +74,176 @@ unsigned long prevBlinkMs = 0;
 const unsigned long blinkIntervalMs = 200;
 bool ledState = false;
 
-// ===== Reconnect =====
+// ===== Timery =====
 unsigned long lastReconnectAttempt = 0;
 const unsigned long reconnectIntervalMs = 5000;
-
-// ===== Keepalive =====
-unsigned long lastPing = 0;
+unsigned long lastPing   = 0;
+unsigned long lastStatus = 0;
 
 // ---------- Farby ----------
-String colorTemperature(float t) {
+String colorTemp(float t) {
   if (t < 20)       return "#3b82f6";
   else if (t < 25)  return "#22c55e";
   else if (t <= 27) return "#f97316";
   else              return "#ef4444";
 }
-String colorHumidity(float h) {
+String colorHum(float h) {
   if (h < 30)       return "#f97316";
   else if (h <= 60) return "#22c55e";
   else              return "#3b82f6";
 }
-String colorRSSI(int rssi) {
-  if (rssi <= -80)      return "#ef4444";
-  else if (rssi <= -60) return "#f97316";
-  else                  return "#22c55e";
+String colorRSSI(int r) {
+  if (r <= -80)      return "#ef4444";
+  else if (r <= -60) return "#f97316";
+  else               return "#22c55e";
 }
-String colorBat(int pct) {
-  if (pct < 20)  return "#ef4444";
-  else if (pct < 50) return "#f97316";
-  else           return "#22c55e";
+String colorBat(int p) {
+  if (p < 20)  return "#ef4444";
+  else if (p < 50) return "#f97316";
+  else         return "#22c55e";
 }
 
 // ---------- HTML ----------
 String generateHTML(float temperature, float humidity, int rssi) {
   String html = F("<!DOCTYPE html><html lang='sk'><head>"
     "<meta charset='UTF-8'>"
-    "<meta name='viewport' content='width=device-width,initial-scale=1.0'>"
+    "<meta name='viewport' content='width=device-width,initial-scale=1.0,maximum-scale=1.0'>"
     "<title>ESP8266 Stanica</title>"
     "<style>"
+
+    // Reset + základné
     "*{box-sizing:border-box;margin:0;padding:0}"
-    "body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;text-align:center;padding:16px}"
-    "h2{color:#38bdf8;margin-bottom:16px;font-size:1.3em}"
-    "table{margin:auto;border-collapse:collapse;width:95%;max-width:480px;background:#16213e;border-radius:10px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.4)}"
-    "th,td{padding:13px 16px;border-bottom:1px solid #0f3460;text-align:left}"
-    "th{background:#0f3460;color:#38bdf8;font-size:.9em}"
-    "td:first-child{color:#94a3b8;font-size:.9em}"
-    "td:last-child{font-weight:bold}"
-    ".bat-wrap{width:120px;background:#0f3460;border-radius:6px;height:12px;display:inline-block;vertical-align:middle;margin-left:8px;overflow:hidden}"
-    ".bat-fill{height:100%;border-radius:6px}"
-    ".prog-wrap{width:80%;max-width:400px;background:#0f3460;margin:16px auto;height:6px;border-radius:3px;overflow:hidden}"
-    ".prog-fill{width:0%;height:100%;background:#38bdf8;border-radius:3px}"
-    "canvas{margin:20px auto;display:block;background:#16213e;border-radius:10px;padding:10px}"
-    ".charge{color:#fbbf24}"
-    "</style></head><body>");
+    "html{font-size:16px}"
+    "body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;"
+         "min-height:100vh;padding:12px}"
 
-  html += F("<h2>⚡ ESP8266 Meracia Stanica</h2>");
-  html += F("<table><tr><th>Parameter</th><th>Hodnota</th></tr>");
+    // Wrapper
+    ".wrap{max-width:520px;margin:0 auto}"
 
-  html += "<tr><td>🌡 Teplota</td><td style='color:" + colorTemperature(temperature) + "'>" + String(temperature, 1) + " °C</td></tr>";
-  html += "<tr><td>💧 Vlhkosť</td><td style='color:" + colorHumidity(humidity) + "'>" + String(humidity, 1) + " %</td></tr>";
-  html += "<tr><td>📶 Wi-Fi RSSI</td><td style='color:" + colorRSSI(rssi) + "'>" + String(rssi) + " dBm</td></tr>";
+    // Hlavička
+    ".header{text-align:center;padding:16px 0 20px}"
+    ".header h1{color:#38bdf8;font-size:clamp(1.1em,4vw,1.5em);margin-bottom:4px}"
+    ".header p{color:#475569;font-size:clamp(0.7em,2.5vw,0.85em)}"
 
-  html += "<tr><td>🔋 Batéria</td><td style='color:" + colorBat(batteryPct) + "'>";
-  html += String(batteryVolt, 2) + " V (" + String(batteryPct) + "%)";
-  html += "<span class='bat-wrap'><span class='bat-fill' style='width:" + String(batteryPct) + "%;background:" + colorBat(batteryPct) + "'></span></span>";
-  html += "</td></tr>";
+    // Karty — grid 2x2 na PC, 2x2 na mobile (menšie)
+    ".cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}"
 
-  html += "<tr><td>⚡ Nabíjanie</td><td class='charge'>" + String(isCharging ? "ÁNO — nabíja sa" : "NIE") + "</td></tr>";
-  html += F("</table>");
+    ".card{background:#1e293b;border-radius:12px;padding:14px 12px;"
+          "border:1px solid #1e3a5f;display:flex;flex-direction:column;gap:6px}"
+    ".card-icon{font-size:clamp(1.4em,5vw,1.8em)}"
+    ".card-label{color:#64748b;font-size:clamp(0.65em,2.2vw,0.78em);text-transform:uppercase;letter-spacing:.05em}"
+    ".card-value{font-size:clamp(1.2em,4.5vw,1.6em);font-weight:bold;line-height:1}"
+    ".card-sub{color:#64748b;font-size:clamp(0.6em,2vw,0.72em)}"
 
+    // Batéria progress v karte
+    ".bat-bar-wrap{width:100%;background:#0f172a;border-radius:4px;height:6px;margin-top:4px;overflow:hidden}"
+    ".bat-bar-fill{height:100%;border-radius:4px;transition:width .5s}"
+
+    // Nabíjanie karta — celá šírka
+    ".card-full{grid-column:1/-1}"
+
+    // Refresh progress
+    ".prog-wrap{width:100%;background:#1e293b;border-radius:4px;height:4px;margin-bottom:14px;overflow:hidden}"
+    ".prog-fill{width:0%;height:100%;background:#38bdf8;border-radius:4px}"
+
+    // Graf wrapper
+    ".chart-wrap{background:#1e293b;border-radius:12px;padding:12px;"
+                "border:1px solid #1e3a5f;margin-bottom:14px}"
+    ".chart-title{color:#64748b;font-size:0.78em;text-transform:uppercase;"
+                 "letter-spacing:.05em;margin-bottom:8px;text-align:center}"
+    "canvas{width:100%!important;height:auto!important;display:block}"
+
+    // Footer
+    ".footer{text-align:center;color:#334155;font-size:0.7em;padding:8px 0}"
+
+    // Responzívnosť — malé telefóny
+    "@media(max-width:360px){"
+      ".cards{grid-template-columns:1fr 1fr;gap:8px}"
+      ".card{padding:10px 8px}"
+    "}"
+
+    "</style></head><body>"
+    "<div class='wrap'>"
+  );
+
+  // Hlavička
+  html += F("<div class='header'>"
+    "<h1>⚡ ESP8266 Meracia Stanica</h1>"
+    "<p>Teplota · Vlhkosť · Batéria · WiFi</p>"
+    "</div>");
+
+  // Refresh progress bar
   html += F("<div class='prog-wrap'><div class='prog-fill' id='prog'></div></div>");
-  html += F("<canvas id='chart' width='460' height='220'></canvas>");
 
+  // Karty
+  html += F("<div class='cards'>");
+
+  // Teplota
+  html += "<div class='card'>"
+    "<span class='card-icon'>🌡</span>"
+    "<span class='card-label'>Teplota</span>"
+    "<span class='card-value' style='color:" + colorTemp(temperature) + "'>" + String(temperature, 1) + " °C</span>"
+    "<span class='card-sub'>DHT11 senzor</span>"
+    "</div>";
+
+  // Vlhkosť
+  html += "<div class='card'>"
+    "<span class='card-icon'>💧</span>"
+    "<span class='card-label'>Vlhkosť</span>"
+    "<span class='card-value' style='color:" + colorHum(humidity) + "'>" + String(humidity, 1) + " %</span>"
+    "<span class='card-sub'>Relatívna vlhkosť</span>"
+    "</div>";
+
+  // WiFi
+  html += "<div class='card'>"
+    "<span class='card-icon'>📶</span>"
+    "<span class='card-label'>WiFi signál</span>"
+    "<span class='card-value' style='color:" + colorRSSI(rssi) + "'>" + String(rssi) + " dBm</span>"
+    "<span class='card-sub'>" + String(rssi > -60 ? "Silný signál" : rssi > -80 ? "Stredný signál" : "Slabý signál") + "</span>"
+    "</div>";
+
+  // Batéria
+  html += "<div class='card'>"
+    "<span class='card-icon'>🔋</span>"
+    "<span class='card-label'>Batéria</span>"
+    "<span class='card-value' style='color:" + colorBat(batteryPct) + "'>" + String(batteryPct) + " %</span>"
+    "<span class='card-sub'>" + String(batteryVolt, 2) + " V</span>"
+    "<div class='bat-bar-wrap'>"
+    "<div class='bat-bar-fill' style='width:" + String(batteryPct) + "%;background:" + colorBat(batteryPct) + "'></div>"
+    "</div>"
+    "</div>";
+
+  // Nabíjanie — celá šírka
+  html += "<div class='card card-full'>"
+    "<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px'>"
+    "<div style='display:flex;align-items:center;gap:10px'>"
+    "<span class='card-icon'>☀️</span>"
+    "<div><span class='card-label' style='display:block'>Solárne nabíjanie</span>"
+    "<span class='card-value' style='font-size:1.1em;color:" + String(isCharging ? "#fbbf24" : "#475569") + "'>"
+    + String(isCharging ? "⚡ Nabíja sa" : "— Nenabíja") + "</span></div></div>"
+    "<div style='text-align:right'>"
+    "<span class='card-label' style='display:block'>Cieľ 85% / Min 30%</span>"
+    "<span style='font-size:0.8em;color:#475569'>" + String(batteryVolt, 2) + "V / " + String(V_MAX) + "V max</span>"
+    "</div></div></div>";
+
+  html += F("</div>"); // end cards
+
+  // Graf
+  html += F("<div class='chart-wrap'>"
+    "<div class='chart-title'>📈 História meraní</div>"
+    "<canvas id='chart' height='200'></canvas>"
+    "</div>");
+
+  // Footer
+  html += F("<div class='footer'>ESP8266 · DHT11 · TP4056 · 18650 · Refresh každých 10s</div>"
+    "</div>"); // end wrap
+
+  // JavaScript
   html += "<script>";
   html += "const T_NEW=" + String(temperature, 1) + ";";
   html += "const H_NEW=" + String(humidity, 1) + ";";
   html += "const B_NEW=" + String(batteryPct) + ";";
+
   html += F(R"(
 const MAX_PTS = 12;
 function store(key, val) {
@@ -170,16 +261,53 @@ let bArr = store('bH', B_NEW);
 let xArr = store('xH', now);
 
 function drawChart() {
-  const c = document.getElementById('chart');
-  const ctx = c.getContext('2d');
-  const W = c.width, H = c.height;
-  const PAD = { top: 30, right: 20, bottom: 40, left: 42 };
+  const canvas = document.getElementById('chart');
+  // Nastav canvas rozmer podľa skutočnej šírky
+  canvas.width  = canvas.offsetWidth || 460;
+  canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const PAD = { top:32, right:16, bottom:36, left:40 };
   const gW = W - PAD.left - PAD.right;
-  const gH = H - PAD.top - PAD.bottom;
+  const gH = H - PAD.top  - PAD.bottom;
 
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#16213e';
+  ctx.fillStyle = '#1e293b';
   ctx.fillRect(0, 0, W, H);
+
+  const n = xArr.length;
+  if (n < 2) {
+    ctx.fillStyle = '#475569';
+    ctx.font = '13px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Čakám na viac dát (min. 2 merania)...', W/2, H/2);
+    return;
+  }
+
+  // Mriežka
+  for (let i = 0; i <= 5; i++) {
+    let y = PAD.top + (gH / 5) * i;
+    ctx.strokeStyle = '#1e3a5f';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, y);
+    ctx.lineTo(PAD.left + gW, y);
+    ctx.stroke();
+    ctx.fillStyle = '#334155';
+    ctx.font = '9px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText(String(100 - i * 20), PAD.left - 4, y + 3);
+  }
+
+  // X labely
+  ctx.fillStyle = '#334155';
+  ctx.font = '8px Arial';
+  ctx.textAlign = 'center';
+  let step = Math.max(1, Math.floor(n / 5));
+  for (let i = 0; i < n; i += step) {
+    let x = PAD.left + (i / (n - 1)) * gW;
+    ctx.fillText(xArr[i], x, H - PAD.bottom + 12);
+  }
 
   const datasets = [
     { data: tArr, color: '#ef4444', label: '°C', yMin: -10, yMax: 50 },
@@ -187,89 +315,73 @@ function drawChart() {
     { data: bArr, color: '#22c55e', label: '%B', yMin: 0,   yMax: 100 }
   ];
 
-  const n = xArr.length;
-  if (n < 2) {
-    ctx.fillStyle = '#64748b';
-    ctx.font = '13px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('Čakám na viac dát...', W/2, H/2);
-    return;
-  }
-
-  // Mriežka
-  ctx.strokeStyle = '#0f3460';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) {
-    let y = PAD.top + (gH / 5) * i;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, y);
-    ctx.lineTo(PAD.left + gW, y);
-    ctx.stroke();
-    ctx.fillStyle = '#475569';
-    ctx.font = '10px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(String(100 - i * 20), PAD.left - 4, y + 3);
-  }
-
-  // X osi labely
-  ctx.fillStyle = '#475569';
-  ctx.font = '9px Arial';
-  ctx.textAlign = 'center';
-  let step = Math.max(1, Math.floor(n / 4));
-  for (let i = 0; i < n; i += step) {
-    let x = PAD.left + (i / (n - 1)) * gW;
-    ctx.fillText(xArr[i], x, H - PAD.bottom + 14);
-  }
-
-  // Čiary + body
   datasets.forEach(ds => {
     if (!ds.data || ds.data.length < 2) return;
+
+    // Plocha pod čiarou
+    ctx.beginPath();
+    ds.data.forEach((val, i) => {
+      let x = PAD.left + (i / (n-1)) * gW;
+      let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
+      let y = PAD.top + gH - norm * gH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.lineTo(PAD.left + ((ds.data.length-1)/(n-1)) * gW, PAD.top + gH);
+    ctx.lineTo(PAD.left, PAD.top + gH);
+    ctx.closePath();
+    ctx.fillStyle = ds.color + '18';
+    ctx.fill();
+
+    // Čiara
     ctx.beginPath();
     ctx.strokeStyle = ds.color;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ds.data.forEach((val, i) => {
-      let x = PAD.left + (i / (n - 1)) * gW;
+      let x = PAD.left + (i / (n-1)) * gW;
       let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
       let y = PAD.top + gH - norm * gH;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
 
+    // Body + posledná hodnota
     ds.data.forEach((val, i) => {
-      let x = PAD.left + (i / (n - 1)) * gW;
+      let x = PAD.left + (i / (n-1)) * gW;
       let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
       let y = PAD.top + gH - norm * gH;
       ctx.beginPath();
-      ctx.arc(x, y, 3, 0, 2 * Math.PI);
+      ctx.arc(x, y, i === ds.data.length-1 ? 4 : 2.5, 0, 2*Math.PI);
       ctx.fillStyle = ds.color;
       ctx.fill();
       if (i === ds.data.length - 1) {
         ctx.fillStyle = ds.color;
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(val.toFixed(1) + ' ' + ds.label, x, y - 8);
+        ctx.fillText(val.toFixed(1) + ' ' + ds.label, x, y - 9);
       }
     });
   });
 
   // Legenda
-  const legends = [
-    { color: '#ef4444', text: 'Teplota (°C)' },
-    { color: '#3b82f6', text: 'Vlhkosť (%)' },
-    { color: '#22c55e', text: 'Batéria (%)' }
+  const leg = [
+    { color:'#ef4444', text:'Teplota (°C)' },
+    { color:'#3b82f6', text:'Vlhkosť (%)' },
+    { color:'#22c55e', text:'Batéria (%)' }
   ];
-  legends.forEach((l, i) => {
-    let lx = PAD.left + i * (gW / 3) + 10;
-    let ly = PAD.top - 12;
+  leg.forEach((l, i) => {
+    let lx = PAD.left + i * (gW / 3) + 4;
+    let ly = 13;
     ctx.fillStyle = l.color;
-    ctx.fillRect(lx, ly, 18, 3);
-    ctx.font = '10px Arial';
+    ctx.fillRect(lx, ly - 3, 14, 3);
+    ctx.font = '9px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(l.text, lx + 22, ly + 4);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(l.text, lx + 17, ly);
   });
 }
 
+// Refresh progress (10 sekúnd)
 function startProgress() {
   let el = document.getElementById('prog');
   let w = 0;
@@ -282,8 +394,11 @@ function startProgress() {
 window.onload = () => {
   drawChart();
   startProgress();
+  // Prekreslí graf ak sa zmení veľkosť okna
+  window.addEventListener('resize', drawChart);
 };
 )");
+
   html += "</script></body></html>";
   return html;
 }
@@ -293,8 +408,11 @@ void handleRoot() {
   int rssi = WiFi.RSSI();
   if (lastTemp == 0 && lastHum == 0) {
     server.send(200, "text/html; charset=UTF-8",
-      "<html><body style='background:#1a1a2e;color:#38bdf8;text-align:center;padding:40px'>"
-      "<h2>⏳ Čakám na DHT11...</h2></body></html>");
+      "<html><body style='background:#0f172a;color:#38bdf8;"
+      "text-align:center;padding:40px;font-family:Arial'>"
+      "<h2>⏳ Čakám na DHT11...</h2>"
+      "<p style='color:#475569;margin-top:8px'>Prosím počkaj 5 sekúnd a obnov stránku</p>"
+      "</body></html>");
     return;
   }
   Serial.printf("T: %.1f°C  H: %.1f%%  Bat: %.2fV (%d%%)  RSSI: %d dBm\n",
@@ -307,7 +425,7 @@ void startServerIfNeeded() {
     server.on("/", handleRoot);
     server.begin();
     serverStarted = true;
-    Serial.print("Web server spustený! IP: ");
+    Serial.print("✅ Web server spustený! IP: ");
     Serial.println(WiFi.localIP());
   }
 }
@@ -326,7 +444,7 @@ void readDHT() {
 
 void manageWifiAndLed() {
   if (WiFi.status() == WL_CONNECTED) {
-    digitalWrite(LED_PIN, LOW);   // svieti = pripojené
+    digitalWrite(LED_PIN, LOW);
     startServerIfNeeded();
   } else {
     unsigned long now = millis();
@@ -338,7 +456,7 @@ void manageWifiAndLed() {
     if ((unsigned long)(now - lastReconnectAttempt) >= reconnectIntervalMs) {
       lastReconnectAttempt = now;
       WiFi.reconnect();
-      Serial.println("WiFi reconnect...");
+      Serial.println("⚠ WiFi reconnect...");
       serverStarted = false;
     }
   }
@@ -346,23 +464,24 @@ void manageWifiAndLed() {
 
 void setup() {
   Serial.begin(115200);
-  dht.begin();
+  delay(3000);
+  Serial.println("\n\n===== ESP8266 ŠTART =====");
 
+  dht.begin();
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
-
   pinMode(CE_PIN, OUTPUT);
   digitalWrite(CE_PIN, LOW);
 
   WiFi.mode(WIFI_STA);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);   // vypne power save — FIX odpojenia
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
-  WiFi.disconnect(true);                // vymaže staré uložené WiFi
+  WiFi.disconnect(true);
   delay(200);
   WiFi.begin(ssid, password);
 
-  Serial.printf("\nConnecting to: %s\n", ssid);
+  Serial.printf("Connecting to: %s\n", ssid);
   int timeout = 0;
   while (WiFi.status() != WL_CONNECTED && timeout < 30) {
     delay(500);
@@ -385,11 +504,26 @@ void loop() {
   manageWifiAndLed();
   if (serverStarted) server.handleClient();
 
-  // Keepalive — udrží WiFi spojenie aktívne
+  // Keepalive
   if ((unsigned long)(millis() - lastPing) >= 30000) {
     lastPing = millis();
+    if (WiFi.status() == WL_CONNECTED) WiFi.RSSI();
+  }
+
+  // Status výpis každých 10 sekúnd
+  if ((unsigned long)(millis() - lastStatus) >= 10000) {
+    lastStatus = millis();
+    Serial.println("─────────────────────────");
+    Serial.printf("WiFi:    %s\n", WiFi.status() == WL_CONNECTED ? "PRIPOJENÉ" : "ODPOJENÉ");
     if (WiFi.status() == WL_CONNECTED) {
-      WiFi.RSSI();
+      Serial.printf("IP:      %s\n", WiFi.localIP().toString().c_str());
+      Serial.printf("RSSI:    %d dBm\n", WiFi.RSSI());
     }
+    Serial.printf("Teplota: %.1f C\n", lastTemp);
+    Serial.printf("Vlhkost: %.1f %%\n", lastHum);
+    Serial.printf("Bateria: %.2f V (%d %%)\n", batteryVolt, batteryPct);
+    Serial.printf("Nabija:  %s\n", isCharging ? "ANO" : "NIE");
+    Serial.printf("Uptime:  %lu s\n", millis() / 1000);
+    Serial.println("─────────────────────────");
   }
 }
