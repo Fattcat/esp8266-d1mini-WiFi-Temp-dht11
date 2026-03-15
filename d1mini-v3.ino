@@ -25,23 +25,37 @@ float batteryVolt = 0;
 int   batteryPct  = 0;
 
 float getBatteryVoltage() {
-  int raw = analogRead(ADC_PIN);
-  float vADC = (raw / 1023.0) * 1.0;
+  // Priemeruj 5 meraní pre stabilitu
+  long sum = 0;
+  for (int i = 0; i < 5; i++) {
+    sum += analogRead(ADC_PIN);
+    delay(5);
+  }
+  float vADC = ((sum / 5.0) / 1023.0) * 1.0;
   return vADC * ((R1 + R2) / R2);
 }
 
 int voltageToPct(float v) {
   if (v >= 4.20) return 100;
-  if (v >= 4.00) return map((int)(v*100), 400, 420, 85, 100);
-  if (v >= 3.75) return map((int)(v*100), 375, 400, 50, 85);
-  if (v >= 3.60) return map((int)(v*100), 360, 375, 30, 50);
-  if (v >= 3.00) return map((int)(v*100), 300, 360, 0, 30);
+  if (v >= 4.00) return map((int)(v * 100), 400, 420, 85, 100);
+  if (v >= 3.75) return map((int)(v * 100), 375, 400, 50, 85);
+  if (v >= 3.60) return map((int)(v * 100), 360, 375, 30, 50);
+  if (v >= 3.00) return map((int)(v * 100), 300, 360, 0, 30);
   return 0;
 }
 
 void manageBattery() {
   batteryVolt = getBatteryVoltage();
   batteryPct  = voltageToPct(batteryVolt);
+
+  // Ignoruj nereálne merania (nezapojený delič)
+  if (batteryVolt < 2.5 || batteryVolt > 4.3) {
+    Serial.printf("Nereálne napätie: %.2fV — preskakujem\n", batteryVolt);
+    digitalWrite(CE_PIN, LOW);
+    isCharging = false;
+    return;
+  }
+
   if (!isCharging && batteryVolt <= V_MIN) {
     digitalWrite(CE_PIN, HIGH);
     isCharging = true;
@@ -68,27 +82,30 @@ bool ledState = false;
 unsigned long lastReconnectAttempt = 0;
 const unsigned long reconnectIntervalMs = 5000;
 
+// ===== Keepalive =====
+unsigned long lastPing = 0;
+
 // ---------- Farby ----------
 String colorTemperature(float t) {
-  if (t < 20) return "#3b82f6";
-  else if (t < 25) return "#22c55e";
+  if (t < 20)       return "#3b82f6";
+  else if (t < 25)  return "#22c55e";
   else if (t <= 27) return "#f97316";
-  else return "#ef4444";
+  else              return "#ef4444";
 }
 String colorHumidity(float h) {
-  if (h < 30) return "#f97316";
+  if (h < 30)       return "#f97316";
   else if (h <= 60) return "#22c55e";
-  else return "#3b82f6";
+  else              return "#3b82f6";
 }
 String colorRSSI(int rssi) {
-  if (rssi <= -80) return "#ef4444";
+  if (rssi <= -80)      return "#ef4444";
   else if (rssi <= -60) return "#f97316";
-  else return "#22c55e";
+  else                  return "#22c55e";
 }
 String colorBat(int pct) {
-  if (pct < 20) return "#ef4444";
+  if (pct < 20)  return "#ef4444";
   else if (pct < 50) return "#f97316";
-  else return "#22c55e";
+  else           return "#22c55e";
 }
 
 // ---------- HTML ----------
@@ -129,13 +146,9 @@ String generateHTML(float temperature, float humidity, int rssi) {
   html += "<tr><td>⚡ Nabíjanie</td><td class='charge'>" + String(isCharging ? "ÁNO — nabíja sa" : "NIE") + "</td></tr>";
   html += F("</table>");
 
-  // Progress bar refresh
   html += F("<div class='prog-wrap'><div class='prog-fill' id='prog'></div></div>");
-
-  // Canvas graf
   html += F("<canvas id='chart' width='460' height='220'></canvas>");
 
-  // Čistý JS graf — bez externých knižníc
   html += "<script>";
   html += "const T_NEW=" + String(temperature, 1) + ";";
   html += "const H_NEW=" + String(humidity, 1) + ";";
@@ -149,18 +162,13 @@ function store(key, val) {
   sessionStorage.setItem(key, JSON.stringify(arr));
   return arr;
 }
-function load(key) {
-  return JSON.parse(sessionStorage.getItem(key) || '[]');
-}
 
-// Ulož nové hodnoty
 let now = new Date().toLocaleTimeString('sk', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 let tArr = store('tH', T_NEW);
 let hArr = store('hH', H_NEW);
 let bArr = store('bH', B_NEW);
 let xArr = store('xH', now);
 
-// === KRESLENIE GRAFU ===
 function drawChart() {
   const c = document.getElementById('chart');
   const ctx = c.getContext('2d');
@@ -170,8 +178,6 @@ function drawChart() {
   const gH = H - PAD.top - PAD.bottom;
 
   ctx.clearRect(0, 0, W, H);
-
-  // Pozadie
   ctx.fillStyle = '#16213e';
   ctx.fillRect(0, 0, W, H);
 
@@ -199,14 +205,13 @@ function drawChart() {
     ctx.moveTo(PAD.left, y);
     ctx.lineTo(PAD.left + gW, y);
     ctx.stroke();
-    // Y osi label (0-100)
     ctx.fillStyle = '#475569';
     ctx.font = '10px Arial';
     ctx.textAlign = 'right';
     ctx.fillText(String(100 - i * 20), PAD.left - 4, y + 3);
   }
 
-  // X osi labely (čas)
+  // X osi labely
   ctx.fillStyle = '#475569';
   ctx.font = '9px Arial';
   ctx.textAlign = 'center';
@@ -216,14 +221,13 @@ function drawChart() {
     ctx.fillText(xArr[i], x, H - PAD.bottom + 14);
   }
 
-  // Čiary
+  // Čiary + body
   datasets.forEach(ds => {
     if (!ds.data || ds.data.length < 2) return;
     ctx.beginPath();
     ctx.strokeStyle = ds.color;
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';
-
     ds.data.forEach((val, i) => {
       let x = PAD.left + (i / (n - 1)) * gW;
       let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
@@ -232,7 +236,6 @@ function drawChart() {
     });
     ctx.stroke();
 
-    // Bodky + hodnoty
     ds.data.forEach((val, i) => {
       let x = PAD.left + (i / (n - 1)) * gW;
       let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
@@ -241,7 +244,6 @@ function drawChart() {
       ctx.arc(x, y, 3, 0, 2 * Math.PI);
       ctx.fillStyle = ds.color;
       ctx.fill();
-      // Hodnota nad posledným bodom
       if (i === ds.data.length - 1) {
         ctx.fillStyle = ds.color;
         ctx.font = 'bold 10px Arial';
@@ -268,7 +270,6 @@ function drawChart() {
   });
 }
 
-// Progress bar + refresh
 function startProgress() {
   let el = document.getElementById('prog');
   let w = 0;
@@ -325,7 +326,7 @@ void readDHT() {
 
 void manageWifiAndLed() {
   if (WiFi.status() == WL_CONNECTED) {
-    digitalWrite(LED_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);   // svieti = pripojené
     startServerIfNeeded();
   } else {
     unsigned long now = millis();
@@ -346,19 +347,22 @@ void manageWifiAndLed() {
 void setup() {
   Serial.begin(115200);
   dht.begin();
+
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
+
   pinMode(CE_PIN, OUTPUT);
   digitalWrite(CE_PIN, LOW);
 
   WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);   // vypne power save — FIX odpojenia
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
+  WiFi.disconnect(true);                // vymaže staré uložené WiFi
+  delay(200);
   WiFi.begin(ssid, password);
 
-  Serial.printf("Connecting to: %s\n", ssid);
-
-  // ← PRIDAJ TOTO: čakaj max 15 sekúnd
+  Serial.printf("\nConnecting to: %s\n", ssid);
   int timeout = 0;
   while (WiFi.status() != WL_CONNECTED && timeout < 30) {
     delay(500);
@@ -367,11 +371,11 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nPripojené!");
-    Serial.print("IP: ");
+    Serial.println("\n✅ Pripojené!");
+    Serial.print("IP adresa: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\nNepripojené — skúsim neskôr...");
+    Serial.println("\n⚠ Nepripojené — skúsim neskôr...");
   }
 }
 
@@ -380,4 +384,12 @@ void loop() {
   manageBattery();
   manageWifiAndLed();
   if (serverStarted) server.handleClient();
+
+  // Keepalive — udrží WiFi spojenie aktívne
+  if ((unsigned long)(millis() - lastPing) >= 30000) {
+    lastPing = millis();
+    if (WiFi.status() == WL_CONNECTED) {
+      WiFi.RSSI();
+    }
+  }
 }
