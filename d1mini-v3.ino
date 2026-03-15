@@ -98,9 +98,9 @@ String colorRSSI(int r) {
   else               return "#22c55e";
 }
 String colorBat(int p) {
-  if (p < 20)  return "#ef4444";
-  else if (p < 50) return "#f97316";
-  else         return "#22c55e";
+  if (p < 20)       return "#ef4444";
+  else if (p < 50)  return "#f97316";
+  else              return "#22c55e";
 }
 
 // ---------- HTML ----------
@@ -111,55 +111,58 @@ String generateHTML(float temperature, float humidity, int rssi) {
     "<title>ESP8266 Stanica</title>"
     "<style>"
 
-    // Reset + základné
     "*{box-sizing:border-box;margin:0;padding:0}"
     "html{font-size:16px}"
     "body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;"
-         "min-height:100vh;padding:12px}"
+         "min-height:100vh;padding:10px}"
 
-    // Wrapper
-    ".wrap{max-width:520px;margin:0 auto}"
+    ".wrap{max-width:600px;margin:0 auto}"
 
     // Hlavička
-    ".header{text-align:center;padding:16px 0 20px}"
-    ".header h1{color:#38bdf8;font-size:clamp(1.1em,4vw,1.5em);margin-bottom:4px}"
-    ".header p{color:#475569;font-size:clamp(0.7em,2.5vw,0.85em)}"
+    ".header{text-align:center;padding:10px 0 12px}"
+    ".header h1{color:#38bdf8;font-size:clamp(1em,3.5vw,1.3em);margin-bottom:2px}"
+    ".header p{color:#475569;font-size:clamp(0.65em,2vw,0.78em)}"
 
-    // Karty — grid 2x2 na PC, 2x2 na mobile (menšie)
-    ".cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}"
+    // 4 karty v jednom riadku
+    ".cards{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}"
 
-    ".card{background:#1e293b;border-radius:12px;padding:14px 12px;"
-          "border:1px solid #1e3a5f;display:flex;flex-direction:column;gap:6px}"
-    ".card-icon{font-size:clamp(1.4em,5vw,1.8em)}"
-    ".card-label{color:#64748b;font-size:clamp(0.65em,2.2vw,0.78em);text-transform:uppercase;letter-spacing:.05em}"
-    ".card-value{font-size:clamp(1.2em,4.5vw,1.6em);font-weight:bold;line-height:1}"
-    ".card-sub{color:#64748b;font-size:clamp(0.6em,2vw,0.72em)}"
+    // Karta — zmenšená o 40%
+    ".card{background:#1e293b;border-radius:8px;padding:8px 6px;"
+          "border:1px solid #1e3a5f;display:flex;flex-direction:column;"
+          "align-items:center;text-align:center;gap:3px}"
+    ".card-icon{font-size:clamp(1em,3vw,1.3em)}"
+    ".card-label{color:#64748b;font-size:clamp(0.55em,1.6vw,0.68em);"
+                "text-transform:uppercase;letter-spacing:.04em;line-height:1.2}"
+    ".card-value{font-size:clamp(0.85em,2.8vw,1.1em);font-weight:bold;line-height:1}"
+    ".card-sub{color:#475569;font-size:clamp(0.5em,1.5vw,0.62em);line-height:1.2}"
 
-    // Batéria progress v karte
-    ".bat-bar-wrap{width:100%;background:#0f172a;border-radius:4px;height:6px;margin-top:4px;overflow:hidden}"
-    ".bat-bar-fill{height:100%;border-radius:4px;transition:width .5s}"
+    // Batéria bar
+    ".bat-bar-wrap{width:100%;background:#0f172a;border-radius:3px;height:4px;margin-top:2px;overflow:hidden}"
+    ".bat-bar-fill{height:100%;border-radius:3px}"
 
-    // Nabíjanie karta — celá šírka
-    ".card-full{grid-column:1/-1}"
+    // Nabíjanie — celá šírka
+    ".card-full{grid-column:1/-1;flex-direction:row;justify-content:space-between;"
+               "align-items:center;padding:7px 12px;text-align:left}"
+    ".card-full .left{display:flex;align-items:center;gap:8px}"
+    ".card-full .right{text-align:right}"
 
     // Refresh progress
-    ".prog-wrap{width:100%;background:#1e293b;border-radius:4px;height:4px;margin-bottom:14px;overflow:hidden}"
-    ".prog-fill{width:0%;height:100%;background:#38bdf8;border-radius:4px}"
+    ".prog-wrap{width:100%;background:#1e293b;border-radius:3px;height:3px;margin-bottom:10px;overflow:hidden}"
+    ".prog-fill{width:0%;height:100%;background:#38bdf8;border-radius:3px}"
 
-    // Graf wrapper
-    ".chart-wrap{background:#1e293b;border-radius:12px;padding:12px;"
-                "border:1px solid #1e3a5f;margin-bottom:14px}"
-    ".chart-title{color:#64748b;font-size:0.78em;text-transform:uppercase;"
-                 "letter-spacing:.05em;margin-bottom:8px;text-align:center}"
+    // Graf
+    ".chart-wrap{background:#1e293b;border-radius:10px;padding:10px;"
+                "border:1px solid #1e3a5f;margin-bottom:10px}"
+    ".chart-title{color:#64748b;font-size:0.72em;text-transform:uppercase;"
+                 "letter-spacing:.05em;margin-bottom:6px;text-align:center}"
     "canvas{width:100%!important;height:auto!important;display:block}"
 
-    // Footer
-    ".footer{text-align:center;color:#334155;font-size:0.7em;padding:8px 0}"
+    ".footer{text-align:center;color:#334155;font-size:0.65em;padding:6px 0}"
 
-    // Responzívnosť — malé telefóny
-    "@media(max-width:360px){"
-      ".cards{grid-template-columns:1fr 1fr;gap:8px}"
-      ".card{padding:10px 8px}"
+    // Na velmi malych telefonoch — 2x2 ak nestaci miesto
+    "@media(max-width:320px){"
+      ".cards{grid-template-columns:repeat(2,1fr)}"
+      ".card-full{grid-column:1/-1}"
     "}"
 
     "</style></head><body>"
@@ -172,71 +175,79 @@ String generateHTML(float temperature, float humidity, int rssi) {
     "<p>Teplota · Vlhkosť · Batéria · WiFi</p>"
     "</div>");
 
-  // Refresh progress bar
+  // Refresh progress
   html += F("<div class='prog-wrap'><div class='prog-fill' id='prog'></div></div>");
 
-  // Karty
+  // 4 karty v jednom riadku
   html += F("<div class='cards'>");
 
   // Teplota
   html += "<div class='card'>"
     "<span class='card-icon'>🌡</span>"
     "<span class='card-label'>Teplota</span>"
-    "<span class='card-value' style='color:" + colorTemp(temperature) + "'>" + String(temperature, 1) + " °C</span>"
-    "<span class='card-sub'>DHT11 senzor</span>"
+    "<span class='card-value' style='color:" + colorTemp(temperature) + "'>"
+    + String(temperature, 1) + " °C</span>"
+    "<span class='card-sub'>DHT11</span>"
     "</div>";
 
   // Vlhkosť
   html += "<div class='card'>"
     "<span class='card-icon'>💧</span>"
     "<span class='card-label'>Vlhkosť</span>"
-    "<span class='card-value' style='color:" + colorHum(humidity) + "'>" + String(humidity, 1) + " %</span>"
-    "<span class='card-sub'>Relatívna vlhkosť</span>"
+    "<span class='card-value' style='color:" + colorHum(humidity) + "'>"
+    + String(humidity, 1) + " %</span>"
+    "<span class='card-sub'>Relatívna</span>"
     "</div>";
 
   // WiFi
   html += "<div class='card'>"
     "<span class='card-icon'>📶</span>"
-    "<span class='card-label'>WiFi signál</span>"
-    "<span class='card-value' style='color:" + colorRSSI(rssi) + "'>" + String(rssi) + " dBm</span>"
-    "<span class='card-sub'>" + String(rssi > -60 ? "Silný signál" : rssi > -80 ? "Stredný signál" : "Slabý signál") + "</span>"
+    "<span class='card-label'>WiFi</span>"
+    "<span class='card-value' style='color:" + colorRSSI(rssi) + "'>"
+    + String(rssi) + " dBm</span>"
+    "<span class='card-sub'>"
+    + String(rssi > -60 ? "Silný" : rssi > -80 ? "Stredný" : "Slabý")
+    + "</span>"
     "</div>";
 
   // Batéria
   html += "<div class='card'>"
     "<span class='card-icon'>🔋</span>"
     "<span class='card-label'>Batéria</span>"
-    "<span class='card-value' style='color:" + colorBat(batteryPct) + "'>" + String(batteryPct) + " %</span>"
+    "<span class='card-value' style='color:" + colorBat(batteryPct) + "'>"
+    + String(batteryPct) + " %</span>"
     "<span class='card-sub'>" + String(batteryVolt, 2) + " V</span>"
     "<div class='bat-bar-wrap'>"
-    "<div class='bat-bar-fill' style='width:" + String(batteryPct) + "%;background:" + colorBat(batteryPct) + "'></div>"
-    "</div>"
-    "</div>";
+    "<div class='bat-bar-fill' style='width:" + String(batteryPct)
+    + "%;background:" + colorBat(batteryPct) + "'></div>"
+    "</div></div>";
 
   // Nabíjanie — celá šírka
   html += "<div class='card card-full'>"
-    "<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px'>"
-    "<div style='display:flex;align-items:center;gap:10px'>"
+    "<div class='left'>"
     "<span class='card-icon'>☀️</span>"
-    "<div><span class='card-label' style='display:block'>Solárne nabíjanie</span>"
-    "<span class='card-value' style='font-size:1.1em;color:" + String(isCharging ? "#fbbf24" : "#475569") + "'>"
-    + String(isCharging ? "⚡ Nabíja sa" : "— Nenabíja") + "</span></div></div>"
-    "<div style='text-align:right'>"
-    "<span class='card-label' style='display:block'>Cieľ 85% / Min 30%</span>"
-    "<span style='font-size:0.8em;color:#475569'>" + String(batteryVolt, 2) + "V / " + String(V_MAX) + "V max</span>"
-    "</div></div></div>";
+    "<div>"
+    "<span class='card-label' style='display:block'>Solárne nabíjanie</span>"
+    "<span class='card-value' style='font-size:1em;color:"
+    + String(isCharging ? "#fbbf24" : "#475569") + "'>"
+    + String(isCharging ? "⚡ Nabíja sa" : "— Nenabíja")
+    + "</span></div></div>"
+    "<div class='right'>"
+    "<span class='card-label' style='display:block'>Rozsah: 30% – 85%</span>"
+    "<span style='font-size:0.72em;color:#475569'>"
+    + String(batteryVolt, 2) + "V / max " + String(V_MAX) + "V</span>"
+    "</div></div>";
 
   html += F("</div>"); // end cards
 
   // Graf
   html += F("<div class='chart-wrap'>"
     "<div class='chart-title'>📈 História meraní</div>"
-    "<canvas id='chart' height='200'></canvas>"
+    "<canvas id='chart' height='190'></canvas>"
     "</div>");
 
-  // Footer
   html += F("<div class='footer'>ESP8266 · DHT11 · TP4056 · 18650 · Refresh každých 10s</div>"
-    "</div>"); // end wrap
+    "</div>");
 
   // JavaScript
   html += "<script>";
@@ -254,7 +265,7 @@ function store(key, val) {
   return arr;
 }
 
-let now = new Date().toLocaleTimeString('sk', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+let now = new Date().toLocaleTimeString('sk',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 let tArr = store('tH', T_NEW);
 let hArr = store('hH', H_NEW);
 let bArr = store('bH', B_NEW);
@@ -262,12 +273,11 @@ let xArr = store('xH', now);
 
 function drawChart() {
   const canvas = document.getElementById('chart');
-  // Nastav canvas rozmer podľa skutočnej šírky
   canvas.width  = canvas.offsetWidth || 460;
-  canvas.height = 200;
+  canvas.height = 190;
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
-  const PAD = { top:32, right:16, bottom:36, left:40 };
+  const PAD = {top:30, right:14, bottom:34, left:38};
   const gW = W - PAD.left - PAD.right;
   const gH = H - PAD.top  - PAD.bottom;
 
@@ -278,15 +288,15 @@ function drawChart() {
   const n = xArr.length;
   if (n < 2) {
     ctx.fillStyle = '#475569';
-    ctx.font = '13px Arial';
+    ctx.font = '12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('Čakám na viac dát (min. 2 merania)...', W/2, H/2);
+    ctx.fillText('Čakám na viac dát...', W/2, H/2);
     return;
   }
 
   // Mriežka
   for (let i = 0; i <= 5; i++) {
-    let y = PAD.top + (gH / 5) * i;
+    let y = PAD.top + (gH/5)*i;
     ctx.strokeStyle = '#1e3a5f';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -296,40 +306,39 @@ function drawChart() {
     ctx.fillStyle = '#334155';
     ctx.font = '9px Arial';
     ctx.textAlign = 'right';
-    ctx.fillText(String(100 - i * 20), PAD.left - 4, y + 3);
+    ctx.fillText(String(100 - i*20), PAD.left - 4, y + 3);
   }
 
   // X labely
   ctx.fillStyle = '#334155';
   ctx.font = '8px Arial';
   ctx.textAlign = 'center';
-  let step = Math.max(1, Math.floor(n / 5));
+  let step = Math.max(1, Math.floor(n/5));
   for (let i = 0; i < n; i += step) {
-    let x = PAD.left + (i / (n - 1)) * gW;
-    ctx.fillText(xArr[i], x, H - PAD.bottom + 12);
+    let x = PAD.left + (i/(n-1))*gW;
+    ctx.fillText(xArr[i], x, H - PAD.bottom + 11);
   }
 
   const datasets = [
-    { data: tArr, color: '#ef4444', label: '°C', yMin: -10, yMax: 50 },
-    { data: hArr, color: '#3b82f6', label: '%H', yMin: 0,   yMax: 100 },
-    { data: bArr, color: '#22c55e', label: '%B', yMin: 0,   yMax: 100 }
+    {data:tArr, color:'#ef4444', label:'°C',  yMin:-10, yMax:50},
+    {data:hArr, color:'#3b82f6', label:'%H',  yMin:0,   yMax:100},
+    {data:bArr, color:'#22c55e', label:'%B',  yMin:0,   yMax:100}
   ];
 
   datasets.forEach(ds => {
     if (!ds.data || ds.data.length < 2) return;
 
-    // Plocha pod čiarou
+    // Plocha
     ctx.beginPath();
     ds.data.forEach((val, i) => {
-      let x = PAD.left + (i / (n-1)) * gW;
-      let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
-      let y = PAD.top + gH - norm * gH;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      let x = PAD.left + (i/(n-1))*gW;
+      let y = PAD.top + gH - ((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
-    ctx.lineTo(PAD.left + ((ds.data.length-1)/(n-1)) * gW, PAD.top + gH);
-    ctx.lineTo(PAD.left, PAD.top + gH);
+    ctx.lineTo(PAD.left+((ds.data.length-1)/(n-1))*gW, PAD.top+gH);
+    ctx.lineTo(PAD.left, PAD.top+gH);
     ctx.closePath();
-    ctx.fillStyle = ds.color + '18';
+    ctx.fillStyle = ds.color+'18';
     ctx.fill();
 
     // Čiara
@@ -338,63 +347,53 @@ function drawChart() {
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ds.data.forEach((val, i) => {
-      let x = PAD.left + (i / (n-1)) * gW;
-      let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
-      let y = PAD.top + gH - norm * gH;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      let x = PAD.left + (i/(n-1))*gW;
+      let y = PAD.top + gH - ((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
     ctx.stroke();
 
     // Body + posledná hodnota
     ds.data.forEach((val, i) => {
-      let x = PAD.left + (i / (n-1)) * gW;
-      let norm = (val - ds.yMin) / (ds.yMax - ds.yMin);
-      let y = PAD.top + gH - norm * gH;
+      let x = PAD.left + (i/(n-1))*gW;
+      let y = PAD.top + gH - ((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
       ctx.beginPath();
-      ctx.arc(x, y, i === ds.data.length-1 ? 4 : 2.5, 0, 2*Math.PI);
+      ctx.arc(x, y, i===ds.data.length-1 ? 4 : 2.5, 0, 2*Math.PI);
       ctx.fillStyle = ds.color;
       ctx.fill();
-      if (i === ds.data.length - 1) {
+      if (i === ds.data.length-1) {
         ctx.fillStyle = ds.color;
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(val.toFixed(1) + ' ' + ds.label, x, y - 9);
+        ctx.fillText(val.toFixed(1)+' '+ds.label, x, y-8);
       }
     });
   });
 
   // Legenda
-  const leg = [
-    { color:'#ef4444', text:'Teplota (°C)' },
-    { color:'#3b82f6', text:'Vlhkosť (%)' },
-    { color:'#22c55e', text:'Batéria (%)' }
-  ];
-  leg.forEach((l, i) => {
-    let lx = PAD.left + i * (gW / 3) + 4;
-    let ly = 13;
+  [{color:'#ef4444',text:'Teplota(°C)'},{color:'#3b82f6',text:'Vlhkosť(%)'},{color:'#22c55e',text:'Batéria(%)'}]
+  .forEach((l,i)=>{
+    let lx = PAD.left + i*(gW/3)+4;
     ctx.fillStyle = l.color;
-    ctx.fillRect(lx, ly - 3, 14, 3);
+    ctx.fillRect(lx, 12, 12, 3);
     ctx.font = '9px Arial';
     ctx.textAlign = 'left';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(l.text, lx + 17, ly);
+    ctx.fillText(l.text, lx+15, 16);
   });
 }
 
-// Refresh progress (10 sekúnd)
 function startProgress() {
-  let el = document.getElementById('prog');
-  let w = 0;
-  let id = setInterval(() => {
-    if (w >= 100) { clearInterval(id); location.reload(); }
-    else { w++; el.style.width = w + '%'; }
+  let el = document.getElementById('prog'), w = 0;
+  let id = setInterval(()=>{
+    if(w>=100){clearInterval(id);location.reload();}
+    else{w++;el.style.width=w+'%';}
   }, 100);
 }
 
 window.onload = () => {
   drawChart();
   startProgress();
-  // Prekreslí graf ak sa zmení veľkosť okna
   window.addEventListener('resize', drawChart);
 };
 )");
@@ -504,13 +503,11 @@ void loop() {
   manageWifiAndLed();
   if (serverStarted) server.handleClient();
 
-  // Keepalive
   if ((unsigned long)(millis() - lastPing) >= 30000) {
     lastPing = millis();
     if (WiFi.status() == WL_CONNECTED) WiFi.RSSI();
   }
 
-  // Status výpis každých 10 sekúnd
   if ((unsigned long)(millis() - lastStatus) >= 10000) {
     lastStatus = millis();
     Serial.println("─────────────────────────");
