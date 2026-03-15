@@ -24,6 +24,9 @@ bool  isCharging  = false;
 float batteryVolt = 0;
 int   batteryPct  = 0;
 
+// ===== Čas štartu =====
+unsigned long startMillis = 0;
+
 float getBatteryVoltage() {
   long sum = 0;
   for (int i = 0; i < 5; i++) {
@@ -98,24 +101,54 @@ String colorRSSI(int r) {
   else               return "#22c55e";
 }
 String colorBat(int p) {
-  if (p < 20)       return "#ef4444";
-  else if (p < 50)  return "#f97316";
-  else              return "#22c55e";
+  if (p < 20)      return "#ef4444";
+  else if (p < 50) return "#f97316";
+  else             return "#22c55e";
+}
+
+// ---------- Uptime string ----------
+String uptimeString() {
+  unsigned long s = millis() / 1000;
+  unsigned long d = s / 86400; s %= 86400;
+  unsigned long h = s / 3600;  s %= 3600;
+  unsigned long m = s / 60;    s %= 60;
+  String r = "";
+  if (d > 0) r += String(d) + "d ";
+  if (h > 0 || d > 0) r += String(h) + "h ";
+  r += String(m) + "m " + String(s) + "s";
+  return r;
+}
+
+// ---------- JSON endpoint /data ----------
+void handleData() {
+  int rssi = WiFi.RSSI();
+  String json = "{";
+  json += "\"t\":"   + String(lastTemp, 1) + ",";
+  json += "\"h\":"   + String(lastHum, 1)  + ",";
+  json += "\"rssi\":" + String(rssi)       + ",";
+  json += "\"bv\":"  + String(batteryVolt, 2) + ",";
+  json += "\"bp\":"  + String(batteryPct)  + ",";
+  json += "\"chg\":" + String(isCharging ? 1 : 0) + ",";
+  json += "\"up\":\"" + uptimeString()     + "\",";
+  json += "\"tc\":\"" + colorTemp(lastTemp) + "\",";
+  json += "\"hc\":\"" + colorHum(lastHum)   + "\",";
+  json += "\"rc\":\"" + colorRSSI(rssi)     + "\",";
+  json += "\"bc\":\"" + colorBat(batteryPct) + "\"";
+  json += "}";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", json);
 }
 
 // ---------- HTML ----------
-String generateHTML(float temperature, float humidity, int rssi) {
+String generateHTML() {
+  int rssi = WiFi.RSSI();
   String html = F("<!DOCTYPE html><html lang='sk'><head>"
     "<meta charset='UTF-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1.0,maximum-scale=1.0'>"
     "<title>ESP8266 Stanica</title>"
     "<style>"
-
     "*{box-sizing:border-box;margin:0;padding:0}"
-    "html{font-size:16px}"
-    "body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;"
-         "min-height:100vh;padding:10px}"
-
+    "body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:10px}"
     ".wrap{max-width:600px;margin:0 auto}"
 
     // Hlavička
@@ -123,10 +156,8 @@ String generateHTML(float temperature, float humidity, int rssi) {
     ".header h1{color:#38bdf8;font-size:clamp(1em,3.5vw,1.3em);margin-bottom:2px}"
     ".header p{color:#475569;font-size:clamp(0.65em,2vw,0.78em)}"
 
-    // 4 karty v jednom riadku
+    // 4 karty v riadku
     ".cards{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}"
-
-    // Karta — zmenšená o 40%
     ".card{background:#1e293b;border-radius:8px;padding:8px 6px;"
           "border:1px solid #1e3a5f;display:flex;flex-direction:column;"
           "align-items:center;text-align:center;gap:3px}"
@@ -138,17 +169,19 @@ String generateHTML(float temperature, float humidity, int rssi) {
 
     // Batéria bar
     ".bat-bar-wrap{width:100%;background:#0f172a;border-radius:3px;height:4px;margin-top:2px;overflow:hidden}"
-    ".bat-bar-fill{height:100%;border-radius:3px}"
+    ".bat-bar-fill{height:100%;border-radius:3px;transition:width .6s}"
 
-    // Nabíjanie — celá šírka
+    // Nabíjanie + uptime — celá šírka
     ".card-full{grid-column:1/-1;flex-direction:row;justify-content:space-between;"
-               "align-items:center;padding:7px 12px;text-align:left}"
+               "align-items:center;padding:7px 12px;text-align:left;gap:8px;flex-wrap:wrap}"
     ".card-full .left{display:flex;align-items:center;gap:8px}"
     ".card-full .right{text-align:right}"
+    ".card-full .mid{flex:1;text-align:center;border-left:1px solid #1e3a5f;"
+                    "border-right:1px solid #1e3a5f;padding:0 10px}"
 
-    // Refresh progress
-    ".prog-wrap{width:100%;background:#1e293b;border-radius:3px;height:3px;margin-bottom:10px;overflow:hidden}"
-    ".prog-fill{width:0%;height:100%;background:#38bdf8;border-radius:3px}"
+    // AJAX indikátor
+    ".ajax-bar{width:100%;background:#1e293b;border-radius:3px;height:3px;margin-bottom:10px;overflow:hidden}"
+    ".ajax-fill{width:0%;height:100%;background:#38bdf8;border-radius:3px;transition:width .1s linear}"
 
     // Graf
     ".chart-wrap{background:#1e293b;border-radius:10px;padding:10px;"
@@ -159,14 +192,12 @@ String generateHTML(float temperature, float humidity, int rssi) {
 
     ".footer{text-align:center;color:#334155;font-size:0.65em;padding:6px 0}"
 
-    // Na velmi malych telefonoch — 2x2 ak nestaci miesto
     "@media(max-width:320px){"
       ".cards{grid-template-columns:repeat(2,1fr)}"
       ".card-full{grid-column:1/-1}"
+      ".card-full .mid{border:none;padding:4px 0;width:100%;text-align:left}"
     "}"
-
-    "</style></head><body>"
-    "<div class='wrap'>"
+    "</style></head><body><div class='wrap'>"
   );
 
   // Hlavička
@@ -175,66 +206,69 @@ String generateHTML(float temperature, float humidity, int rssi) {
     "<p>Teplota · Vlhkosť · Batéria · WiFi</p>"
     "</div>");
 
-  // Refresh progress
-  html += F("<div class='prog-wrap'><div class='prog-fill' id='prog'></div></div>");
+  // AJAX progress bar
+  html += F("<div class='ajax-bar'><div class='ajax-fill' id='prog'></div></div>");
 
-  // 4 karty v jednom riadku
+  // 4 karty
   html += F("<div class='cards'>");
 
-  // Teplota
   html += "<div class='card'>"
     "<span class='card-icon'>🌡</span>"
     "<span class='card-label'>Teplota</span>"
-    "<span class='card-value' style='color:" + colorTemp(temperature) + "'>"
-    + String(temperature, 1) + " °C</span>"
+    "<span class='card-value' id='val-t' style='color:" + colorTemp(lastTemp) + "'>"
+    + String(lastTemp, 1) + " °C</span>"
     "<span class='card-sub'>DHT11</span>"
     "</div>";
 
-  // Vlhkosť
   html += "<div class='card'>"
     "<span class='card-icon'>💧</span>"
     "<span class='card-label'>Vlhkosť</span>"
-    "<span class='card-value' style='color:" + colorHum(humidity) + "'>"
-    + String(humidity, 1) + " %</span>"
+    "<span class='card-value' id='val-h' style='color:" + colorHum(lastHum) + "'>"
+    + String(lastHum, 1) + " %</span>"
     "<span class='card-sub'>Relatívna</span>"
     "</div>";
 
-  // WiFi
   html += "<div class='card'>"
     "<span class='card-icon'>📶</span>"
     "<span class='card-label'>WiFi</span>"
-    "<span class='card-value' style='color:" + colorRSSI(rssi) + "'>"
+    "<span class='card-value' id='val-r' style='color:" + colorRSSI(rssi) + "'>"
     + String(rssi) + " dBm</span>"
-    "<span class='card-sub'>"
+    "<span class='card-sub' id='sub-r'>"
     + String(rssi > -60 ? "Silný" : rssi > -80 ? "Stredný" : "Slabý")
-    + "</span>"
-    "</div>";
+    + "</span></div>";
 
-  // Batéria
   html += "<div class='card'>"
     "<span class='card-icon'>🔋</span>"
     "<span class='card-label'>Batéria</span>"
-    "<span class='card-value' style='color:" + colorBat(batteryPct) + "'>"
+    "<span class='card-value' id='val-bp' style='color:" + colorBat(batteryPct) + "'>"
     + String(batteryPct) + " %</span>"
-    "<span class='card-sub'>" + String(batteryVolt, 2) + " V</span>"
+    "<span class='card-sub' id='val-bv'>" + String(batteryVolt, 2) + " V</span>"
     "<div class='bat-bar-wrap'>"
-    "<div class='bat-bar-fill' style='width:" + String(batteryPct)
+    "<div class='bat-bar-fill' id='bat-bar' style='width:" + String(batteryPct)
     + "%;background:" + colorBat(batteryPct) + "'></div>"
     "</div></div>";
 
-  // Nabíjanie — celá šírka
+  // Nabíjanie + uptime karta — celá šírka
   html += "<div class='card card-full'>"
+    // Ľavá — nabíjanie
     "<div class='left'>"
     "<span class='card-icon'>☀️</span>"
     "<div>"
     "<span class='card-label' style='display:block'>Solárne nabíjanie</span>"
-    "<span class='card-value' style='font-size:1em;color:"
+    "<span class='card-value' id='val-chg' style='font-size:1em;color:"
     + String(isCharging ? "#fbbf24" : "#475569") + "'>"
-    + String(isCharging ? "⚡ Nabíja sa" : "— Nenabíja")
-    + "</span></div></div>"
+    + String(isCharging ? "⚡ Nabíja sa" : "— Nenabíja") + "</span>"
+    "</div></div>"
+    // Stred — uptime
+    "<div class='mid'>"
+    "<span class='card-label' style='display:block'>Uptime</span>"
+    "<span class='card-value' id='val-up' style='font-size:0.85em;color:#94a3b8'>"
+    + uptimeString() + "</span>"
+    "</div>"
+    // Pravá — rozsah nabíjania
     "<div class='right'>"
     "<span class='card-label' style='display:block'>Rozsah: 30% – 85%</span>"
-    "<span style='font-size:0.72em;color:#475569'>"
+    "<span style='font-size:0.72em;color:#475569' id='val-bvmax'>"
     + String(batteryVolt, 2) + "V / max " + String(V_MAX) + "V</span>"
     "</div></div>";
 
@@ -242,35 +276,25 @@ String generateHTML(float temperature, float humidity, int rssi) {
 
   // Graf
   html += F("<div class='chart-wrap'>"
-    "<div class='chart-title'>📈 História meraní</div>"
+    "<div class='chart-title'>📈 História meraní (AJAX — bez reloadu)</div>"
     "<canvas id='chart' height='190'></canvas>"
-    "</div>");
-
-  html += F("<div class='footer'>ESP8266 · DHT11 · TP4056 · 18650 · Refresh každých 10s</div>"
+    "</div>"
+    "<div class='footer'>ESP8266 · DHT11 · TP4056 · 18650 · AJAX refresh každých 10s</div>"
     "</div>");
 
   // JavaScript
   html += "<script>";
-  html += "const T_NEW=" + String(temperature, 1) + ";";
-  html += "const H_NEW=" + String(humidity, 1) + ";";
-  html += "const B_NEW=" + String(batteryPct) + ";";
-
+  html += "const INTERVAL = 10000;";
   html += F(R"(
 const MAX_PTS = 12;
-function store(key, val) {
-  let arr = JSON.parse(sessionStorage.getItem(key) || '[]');
+let tArr=[], hArr=[], bArr=[], xArr=[];
+
+function store(arr, val) {
   arr.push(val);
   if (arr.length > MAX_PTS) arr.shift();
-  sessionStorage.setItem(key, JSON.stringify(arr));
-  return arr;
 }
 
-let now = new Date().toLocaleTimeString('sk',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-let tArr = store('tH', T_NEW);
-let hArr = store('hH', H_NEW);
-let bArr = store('bH', B_NEW);
-let xArr = store('xH', now);
-
+// ── Graf ──
 function drawChart() {
   const canvas = document.getElementById('chart');
   canvas.width  = canvas.offsetWidth || 460;
@@ -281,130 +305,160 @@ function drawChart() {
   const gW = W - PAD.left - PAD.right;
   const gH = H - PAD.top  - PAD.bottom;
 
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#1e293b';
-  ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#1e293b';
+  ctx.fillRect(0,0,W,H);
 
   const n = xArr.length;
   if (n < 2) {
-    ctx.fillStyle = '#475569';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
+    ctx.fillStyle='#475569'; ctx.font='12px Arial'; ctx.textAlign='center';
     ctx.fillText('Čakám na viac dát...', W/2, H/2);
     return;
   }
 
-  // Mriežka
-  for (let i = 0; i <= 5; i++) {
-    let y = PAD.top + (gH/5)*i;
-    ctx.strokeStyle = '#1e3a5f';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, y);
-    ctx.lineTo(PAD.left + gW, y);
-    ctx.stroke();
-    ctx.fillStyle = '#334155';
-    ctx.font = '9px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(String(100 - i*20), PAD.left - 4, y + 3);
+  for (let i=0;i<=5;i++){
+    let y=PAD.top+(gH/5)*i;
+    ctx.strokeStyle='#1e3a5f'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+gW,y); ctx.stroke();
+    ctx.fillStyle='#334155'; ctx.font='9px Arial'; ctx.textAlign='right';
+    ctx.fillText(String(100-i*20), PAD.left-4, y+3);
   }
 
-  // X labely
-  ctx.fillStyle = '#334155';
-  ctx.font = '8px Arial';
-  ctx.textAlign = 'center';
-  let step = Math.max(1, Math.floor(n/5));
-  for (let i = 0; i < n; i += step) {
-    let x = PAD.left + (i/(n-1))*gW;
-    ctx.fillText(xArr[i], x, H - PAD.bottom + 11);
+  ctx.fillStyle='#334155'; ctx.font='8px Arial'; ctx.textAlign='center';
+  let step=Math.max(1,Math.floor(n/5));
+  for(let i=0;i<n;i+=step){
+    let x=PAD.left+(i/(n-1))*gW;
+    ctx.fillText(xArr[i], x, H-PAD.bottom+11);
   }
 
-  const datasets = [
-    {data:tArr, color:'#ef4444', label:'°C',  yMin:-10, yMax:50},
-    {data:hArr, color:'#3b82f6', label:'%H',  yMin:0,   yMax:100},
-    {data:bArr, color:'#22c55e', label:'%B',  yMin:0,   yMax:100}
+  const datasets=[
+    {data:tArr,color:'#ef4444',label:'°C', yMin:-10,yMax:50},
+    {data:hArr,color:'#3b82f6',label:'%H', yMin:0,  yMax:100},
+    {data:bArr,color:'#22c55e',label:'%B', yMin:0,  yMax:100}
   ];
 
-  datasets.forEach(ds => {
-    if (!ds.data || ds.data.length < 2) return;
-
-    // Plocha
+  datasets.forEach(ds=>{
+    if(!ds.data||ds.data.length<2)return;
     ctx.beginPath();
-    ds.data.forEach((val, i) => {
-      let x = PAD.left + (i/(n-1))*gW;
-      let y = PAD.top + gH - ((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
-      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    ds.data.forEach((val,i)=>{
+      let x=PAD.left+(i/(n-1))*gW;
+      let y=PAD.top+gH-((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     });
-    ctx.lineTo(PAD.left+((ds.data.length-1)/(n-1))*gW, PAD.top+gH);
-    ctx.lineTo(PAD.left, PAD.top+gH);
+    ctx.lineTo(PAD.left+((ds.data.length-1)/(n-1))*gW,PAD.top+gH);
+    ctx.lineTo(PAD.left,PAD.top+gH);
     ctx.closePath();
-    ctx.fillStyle = ds.color+'18';
-    ctx.fill();
+    ctx.fillStyle=ds.color+'18'; ctx.fill();
 
-    // Čiara
-    ctx.beginPath();
-    ctx.strokeStyle = ds.color;
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ds.data.forEach((val, i) => {
-      let x = PAD.left + (i/(n-1))*gW;
-      let y = PAD.top + gH - ((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
-      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    ctx.beginPath(); ctx.strokeStyle=ds.color; ctx.lineWidth=2; ctx.lineJoin='round';
+    ds.data.forEach((val,i)=>{
+      let x=PAD.left+(i/(n-1))*gW;
+      let y=PAD.top+gH-((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     });
     ctx.stroke();
 
-    // Body + posledná hodnota
-    ds.data.forEach((val, i) => {
-      let x = PAD.left + (i/(n-1))*gW;
-      let y = PAD.top + gH - ((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
-      ctx.beginPath();
-      ctx.arc(x, y, i===ds.data.length-1 ? 4 : 2.5, 0, 2*Math.PI);
-      ctx.fillStyle = ds.color;
-      ctx.fill();
-      if (i === ds.data.length-1) {
-        ctx.fillStyle = ds.color;
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
+    ds.data.forEach((val,i)=>{
+      let x=PAD.left+(i/(n-1))*gW;
+      let y=PAD.top+gH-((val-ds.yMin)/(ds.yMax-ds.yMin))*gH;
+      ctx.beginPath(); ctx.arc(x,y,i===ds.data.length-1?4:2.5,0,2*Math.PI);
+      ctx.fillStyle=ds.color; ctx.fill();
+      if(i===ds.data.length-1){
+        ctx.fillStyle=ds.color; ctx.font='bold 10px Arial'; ctx.textAlign='center';
         ctx.fillText(val.toFixed(1)+' '+ds.label, x, y-8);
       }
     });
   });
 
-  // Legenda
   [{color:'#ef4444',text:'Teplota(°C)'},{color:'#3b82f6',text:'Vlhkosť(%)'},{color:'#22c55e',text:'Batéria(%)'}]
   .forEach((l,i)=>{
-    let lx = PAD.left + i*(gW/3)+4;
-    ctx.fillStyle = l.color;
-    ctx.fillRect(lx, 12, 12, 3);
-    ctx.font = '9px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(l.text, lx+15, 16);
+    let lx=PAD.left+i*(gW/3)+4;
+    ctx.fillStyle=l.color; ctx.fillRect(lx,12,12,3);
+    ctx.font='9px Arial'; ctx.textAlign='left';
+    ctx.fillStyle='#94a3b8'; ctx.fillText(l.text,lx+15,16);
   });
 }
 
+// ── Aktualizácia DOM ──
+function updateDOM(d) {
+  let el;
+  el=document.getElementById('val-t');
+  if(el){el.textContent=d.t.toFixed(1)+' °C'; el.style.color=d.tc;}
+
+  el=document.getElementById('val-h');
+  if(el){el.textContent=d.h.toFixed(1)+' %'; el.style.color=d.hc;}
+
+  el=document.getElementById('val-r');
+  if(el){el.textContent=d.rssi+' dBm'; el.style.color=d.rc;}
+  el=document.getElementById('sub-r');
+  if(el){el.textContent=d.rssi>-60?'Silný':d.rssi>-80?'Stredný':'Slabý';}
+
+  el=document.getElementById('val-bp');
+  if(el){el.textContent=d.bp+' %'; el.style.color=d.bc;}
+  el=document.getElementById('val-bv');
+  if(el){el.textContent=d.bv.toFixed(2)+' V';}
+  el=document.getElementById('bat-bar');
+  if(el){el.style.width=d.bp+'%'; el.style.background=d.bc;}
+
+  el=document.getElementById('val-chg');
+  if(el){
+    el.textContent=d.chg?'⚡ Nabíja sa':'— Nenabíja';
+    el.style.color=d.chg?'#fbbf24':'#475569';
+  }
+
+  el=document.getElementById('val-up');
+  if(el){el.textContent=d.up;}
+
+  el=document.getElementById('val-bvmax');
+  if(el){el.textContent=d.bv.toFixed(2)+'V / max 4.0V';}
+}
+
+// ── AJAX fetch ──
+function fetchData() {
+  fetch('/data')
+    .then(r=>r.json())
+    .then(d=>{
+      updateDOM(d);
+      let now=new Date().toLocaleTimeString('sk',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      store(tArr, d.t);
+      store(hArr, d.h);
+      store(bArr, d.bp);
+      store(xArr, now);
+      drawChart();
+    })
+    .catch(e=>console.warn('Fetch error:', e));
+}
+
+// ── Progress bar (vizuálny countdown) ──
+let progW = 0, progDir = 1;
 function startProgress() {
-  let el = document.getElementById('prog'), w = 0;
-  let id = setInterval(()=>{
-    if(w>=100){clearInterval(id);location.reload();}
-    else{w++;el.style.width=w+'%';}
+  let el = document.getElementById('prog');
+  setInterval(()=>{
+    progW += progDir * (100 / (INTERVAL / 100));
+    if(progW >= 100){ progW = 100; }
+    if(progW <= 0)  { progW = 0; }
+    el.style.width = progW + '%';
   }, 100);
 }
 
+// ── Spustenie ──
 window.onload = () => {
   drawChart();
   startProgress();
+  fetchData(); // prvé načítanie hneď
+  setInterval(()=>{
+    progW = 0; // reset progress
+    fetchData();
+  }, INTERVAL);
   window.addEventListener('resize', drawChart);
 };
 )");
-
   html += "</script></body></html>";
   return html;
 }
 
-// ---------- HTTP handler ----------
+// ---------- HTTP handlery ----------
 void handleRoot() {
-  int rssi = WiFi.RSSI();
   if (lastTemp == 0 && lastHum == 0) {
     server.send(200, "text/html; charset=UTF-8",
       "<html><body style='background:#0f172a;color:#38bdf8;"
@@ -414,14 +468,13 @@ void handleRoot() {
       "</body></html>");
     return;
   }
-  Serial.printf("T: %.1f°C  H: %.1f%%  Bat: %.2fV (%d%%)  RSSI: %d dBm\n",
-    lastTemp, lastHum, batteryVolt, batteryPct, rssi);
-  server.send(200, "text/html; charset=UTF-8", generateHTML(lastTemp, lastHum, rssi));
+  server.send(200, "text/html; charset=UTF-8", generateHTML());
 }
 
 void startServerIfNeeded() {
   if (!serverStarted && WiFi.status() == WL_CONNECTED) {
     server.on("/", handleRoot);
+    server.on("/data", handleData);   // AJAX endpoint
     server.begin();
     serverStarted = true;
     Serial.print("✅ Web server spustený! IP: ");
@@ -466,6 +519,7 @@ void setup() {
   delay(3000);
   Serial.println("\n\n===== ESP8266 ŠTART =====");
 
+  startMillis = millis();
   dht.begin();
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
@@ -516,11 +570,11 @@ void loop() {
       Serial.printf("IP:      %s\n", WiFi.localIP().toString().c_str());
       Serial.printf("RSSI:    %d dBm\n", WiFi.RSSI());
     }
-    Serial.printf("Teplota: %.1f C\n", lastTemp);
-    Serial.printf("Vlhkost: %.1f %%\n", lastHum);
+    Serial.printf("Teplota: %.1f C\n",    lastTemp);
+    Serial.printf("Vlhkost: %.1f %%\n",   lastHum);
     Serial.printf("Bateria: %.2f V (%d %%)\n", batteryVolt, batteryPct);
-    Serial.printf("Nabija:  %s\n", isCharging ? "ANO" : "NIE");
-    Serial.printf("Uptime:  %lu s\n", millis() / 1000);
+    Serial.printf("Nabija:  %s\n",         isCharging ? "ANO" : "NIE");
+    Serial.printf("Uptime:  %s\n",         uptimeString().c_str());
     Serial.println("─────────────────────────");
   }
 }
