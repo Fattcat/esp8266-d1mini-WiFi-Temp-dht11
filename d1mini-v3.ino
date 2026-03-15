@@ -350,11 +350,29 @@ void setup() {
   digitalWrite(LED_PIN, HIGH);
   pinMode(CE_PIN, OUTPUT);
   digitalWrite(CE_PIN, LOW);
+
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid, password);
+
   Serial.printf("Connecting to: %s\n", ssid);
+
+  // ← PRIDAJ TOTO: čakaj max 15 sekúnd
+  int timeout = 0;
+  while (WiFi.status() != WL_CONNECTED && timeout < 30) {
+    delay(500);
+    Serial.print(".");
+    timeout++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nPripojené!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nNepripojené — skúsim neskôr...");
+  }
 }
 
 void loop() {
